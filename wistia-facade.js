@@ -1,14 +1,18 @@
 /*!
- * wistia-facade v1.1.1
+ * wistia-facade v1.2.0
  * Bolk Studio, for jeremyloreau.com
  *
- * Wistia videos embedded in Webflow Rich Text (Embedly or Wistia iframes) are replaced
- * by a thumbnail + play button while the page loads. The real Wistia player is only
- * created on click, then autoplays. Cuts the Wistia player JS and video buffering
- * that otherwise run on every page load (Core Web Vitals).
+ * Wistia, YouTube and Vimeo videos embedded through Webflow (Embedly iframes in Rich Text
+ * and in native Video elements, `.w-video`) are replaced by a thumbnail + play button while
+ * the page loads. The real player is only loaded on click, then autoplays. Cuts the player
+ * JS and video buffering that otherwise run on every page load (Core Web Vitals).
+ *
+ * - Rich Text videos: the iframe is removed and a new player iframe is created on click.
+ * - Video elements outside Rich Text: the iframe stays in place (other site scripts read it),
+ *   but an empty `srcdoc` keeps it from loading its `src` until the click.
  *
  * Install: classic synchronous <script> at the very top of the <head>
- * (no async, no defer, no type="module"), so it runs before the Rich Text iframes are parsed.
+ * (no async, no defer, no type="module"), so it runs before the iframes are parsed.
  * Opt-out: data-jl-wistia-facade="off" on any ancestor of the video.
  */
 (function () {
@@ -16,9 +20,12 @@
   if (window.__jlWistiaFacade) return;
   window.__jlWistiaFacade = true;
   var doc = document;
+  var ALLOW = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
+  // Containers managed by other site scripts (popups, exercise previews already built by the site)
+  var SKIP = '[data-jl-wistia-facade="off"],[cd-popup-wrap],[cd-popup-root],[data-jl-video-preview],[data-media-stage]';
 
   var CSS =
-    '.jl-wistia-facade{position:absolute;inset:0;width:100%;height:100%;padding:0;margin:0;border:0;background:#000;cursor:pointer;overflow:hidden;display:block}' +
+    '.jl-wistia-facade{position:absolute;inset:0;z-index:1;width:100%;height:100%;padding:0;margin:0;border:0;background:#000;cursor:pointer;overflow:hidden;display:block}' +
     '.jl-wistia-facade img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}' +
     '.jl-wistia-facade__play{position:absolute;left:50%;top:50%;width:4.5rem;height:4.5rem;margin:-2.25rem 0 0 -2.25rem;border-radius:50%;background:rgba(0,0,0,.6);transition:transform .2s ease,background-color .2s ease}' +
     '.jl-wistia-facade__play::after{content:"";position:absolute;left:52%;top:50%;transform:translate(-50%,-50%);border-style:solid;border-width:.8rem 0 .8rem 1.35rem;border-color:transparent transparent transparent #fff}' +
@@ -33,44 +40,85 @@
     (doc.head || doc.documentElement).appendChild(style);
   }
 
-  // Resolve an Embedly or Wistia iframe URL to { id, image }
+  // Resolve an Embedly, Wistia, YouTube or Vimeo iframe URL to { kind, id, image, player }
   function resolve(src) {
     try {
-      var u = new URL(src, location.href), image = null;
+      var u = new URL(src, location.href), image = null, host, id, m, q;
       for (var i = 0; i < 3 && /(^|\.)embedly\.com$/.test(u.hostname); i++) {
         image = image || u.searchParams.get('image');
         u = new URL(u.searchParams.get('src'));
       }
-      if (!/(^|\.)wistia\.(net|com)$/.test(u.hostname)) return null;
-      var id = (u.pathname.match(/\/(?:iframe|medias)\/([a-z0-9]+)/i) || [])[1];
-      return id ? { id: id, image: image } : null;
-    } catch (e) { return null; }
+      host = u.hostname;
+      if (/(^|\.)wistia\.(net|com)$/.test(host)) {
+        id = (u.pathname.match(/\/(?:iframe|medias)\/([a-z0-9]+)/i) || [])[1];
+        // Same URL shape as the site's jl-wistia-native-frames script, so it does not reload it
+        return id ? { kind: 'wistia', id: id, image: image, player: 'https://fast.wistia.com/embed/iframe/' + id + '?autoPlay=true' } : null;
+      }
+      if (/(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be)$/.test(host)) {
+        id = /youtu\.be$/.test(host) ? u.pathname.split('/')[1]
+          : u.pathname === '/watch' ? u.searchParams.get('v')
+          : (u.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/) || [])[1];
+        if (!/^[\w-]{11}$/.test(id || '')) return null;
+        q = new URLSearchParams(u.search);
+        q.delete('v'); q.delete('feature');
+        q.set('autoplay', '1'); q.set('playsinline', '1');
+        return { kind: 'youtube', id: id, image: image || 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg', player: 'https://www.youtube-nocookie.com/embed/' + id + '?' + q };
+      }
+      if (/(^|\.)vimeo\.com$/.test(host)) {
+        m = u.pathname.match(/^\/(?:video\/)?(\d+)(?:\/([a-zA-Z0-9]+))?\/?$/);
+        if (!m) return null;
+        q = new URLSearchParams(u.search);
+        if (m[2] && !q.has('h')) q.set('h', m[2]);
+        q.set('autoplay', '1'); q.set('playsinline', '1');
+        return { kind: 'vimeo', id: m[1], image: image, player: 'https://player.vimeo.com/video/' + m[1] + '?' + q };
+      }
+    } catch (e) {}
+    return null;
   }
 
-  // Wistia thumbnail at a given width, in WebP
-  function thumb(image, width) {
-    var m = image && image.match(/^https:\/\/embed-ssl\.wistia\.com\/deliveries\/([a-f0-9]+)/);
-    return m ? 'https://embed-ssl.wistia.com/deliveries/' + m[1] + '.webp?image_resize=' + width : null;
+  // Thumbnail <img>: Wistia in WebP at several widths, other providers as given by Embedly
+  function thumbnail(info) {
+    var wistia = info.kind === 'wistia' && info.image && info.image.match(/^https:\/\/embed-ssl\.wistia\.com\/deliveries\/([a-f0-9]+)/);
+    if (!wistia && !info.image) return null;
+    var img = doc.createElement('img');
+    if (wistia) {
+      var base = 'https://embed-ssl.wistia.com/deliveries/' + wistia[1] + '.webp?image_resize=';
+      img.src = base + 960;
+      img.srcset = [480, 960, 1440].map(function (w) { return base + w + ' ' + w + 'w'; }).join(', ');
+      img.sizes = '(max-width: 767px) 100vw, 960px';
+    } else {
+      img.src = info.image;
+    }
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    return img;
   }
 
   function facade(frame) {
     if (frame.__jlFacade) return;
-    var figure = frame.closest('figure.w-richtext-figure-type-video');
-    if (!figure || figure.closest('[data-jl-wistia-facade="off"]')) return;
+    var stage = frame.parentElement;
+    if (!stage || frame.closest(SKIP)) return;
+    var rich = !!frame.closest('figure.w-richtext-figure-type-video');
+    if (!rich && !stage.classList.contains('w-video')) return;
     var info = resolve(frame.getAttribute('src') || '');
     if (!info) return;
     frame.__jlFacade = true;
     injectStyle();
 
-    var stage = frame.parentElement;
     var english = (doc.documentElement.lang || '').indexOf('en') === 0;
     var title = frame.getAttribute('title');
-    if (!title || /^Wistia/.test(title)) title = english ? 'Video' : 'Vidéo';
-    var width = frame.getAttribute('width'), height = frame.getAttribute('height');
+    if (!title || /^(Wistia|YouTube|Vimeo)/i.test(title)) title = english ? 'Video' : 'Vidéo';
 
     // Stop the iframe before it loads the player and buffers the video
-    frame.removeAttribute('src');
-    frame.remove();
+    if (rich) {
+      frame.removeAttribute('src');
+      frame.remove();
+    } else {
+      frame.setAttribute('srcdoc', ''); // srcdoc wins over src: nothing is loaded, src stays readable
+      frame.setAttribute('tabindex', '-1');
+      frame.setAttribute('aria-hidden', 'true');
+    }
 
     var button = doc.createElement('button');
     button.type = 'button';
@@ -78,17 +126,8 @@
     button.setAttribute('data-ascii-images', 'off');
     button.setAttribute('cd-lightbox-exclude', ''); // keep the site's image lightbox off the thumbnail
     button.setAttribute('aria-label', (english ? 'Play video: ' : 'Lire la vidéo : ') + title);
-    var src = thumb(info.image, 960);
-    if (src) {
-      var img = doc.createElement('img');
-      img.src = src;
-      img.srcset = [480, 960, 1440].map(function (w) { return thumb(info.image, w) + ' ' + w + 'w'; }).join(', ');
-      img.sizes = '(max-width: 767px) 100vw, 960px';
-      img.alt = '';
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      button.appendChild(img);
-    }
+    var img = thumbnail(info);
+    if (img) button.appendChild(img);
     var play = doc.createElement('span');
     play.className = 'jl-wistia-facade__play';
     play.setAttribute('aria-hidden', 'true');
@@ -96,18 +135,26 @@
     stage.appendChild(button);
 
     button.addEventListener('click', function () {
-      var player = doc.createElement('iframe');
-      player.__jlFacade = true; // the observer must not turn the real player back into a facade
-      // Same URL shape as the site's jl-wistia-native-frames script, so it does not reload it
-      player.src = 'https://fast.wistia.com/embed/iframe/' + info.id + '?autoPlay=true';
-      player.title = title;
-      player.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
-      player.allowFullscreen = true;
-      player.setAttribute('frameborder', '0');
-      player.setAttribute('scrolling', 'no');
-      if (width) player.setAttribute('width', width);
-      if (height) player.setAttribute('height', height);
-      stage.replaceChild(player, button);
+      if (rich) {
+        var player = doc.createElement('iframe');
+        player.__jlFacade = true; // the observer must not turn the real player back into a facade
+        player.src = info.player;
+        player.title = title;
+        player.allow = ALLOW;
+        player.allowFullscreen = true;
+        player.setAttribute('frameborder', '0');
+        player.setAttribute('scrolling', 'no');
+        ['width', 'height'].forEach(function (a) { if (frame.getAttribute(a)) player.setAttribute(a, frame.getAttribute(a)); });
+        stage.replaceChild(player, button);
+      } else {
+        frame.allow = ALLOW;
+        frame.allowFullscreen = true;
+        frame.src = info.player;
+        frame.removeAttribute('tabindex');
+        frame.removeAttribute('aria-hidden');
+        frame.removeAttribute('srcdoc'); // the iframe now loads its src
+        button.remove();
+      }
     }, { once: true });
   }
 
@@ -118,7 +165,7 @@
   }
 
   // Catch iframes as the parser inserts them, then a final pass and stop at DOMContentLoaded
-  // (Rich Text videos are in the HTML; no need to watch later DOM churn)
+  // (the videos are in the HTML; no need to watch later DOM churn)
   var observer = new MutationObserver(function (records) {
     records.forEach(function (r) { r.addedNodes.forEach(scan); });
   });
