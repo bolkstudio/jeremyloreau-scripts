@@ -1,5 +1,5 @@
 /*!
- * wistia-facade v1.1.0
+ * wistia-facade v1.1.1
  * Bolk Studio, for jeremyloreau.com
  *
  * Wistia videos embedded in Webflow Rich Text (Embedly or Wistia iframes) are replaced
@@ -19,7 +19,7 @@
 
   var CSS =
     '.jl-wistia-facade{position:absolute;inset:0;width:100%;height:100%;padding:0;margin:0;border:0;background:#000;cursor:pointer;overflow:hidden;display:block}' +
-    '.jl-wistia-facade img{width:100%;height:100%;object-fit:cover;display:block}' +
+    '.jl-wistia-facade img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}' +
     '.jl-wistia-facade__play{position:absolute;left:50%;top:50%;width:4.5rem;height:4.5rem;margin:-2.25rem 0 0 -2.25rem;border-radius:50%;background:rgba(0,0,0,.6);transition:transform .2s ease,background-color .2s ease}' +
     '.jl-wistia-facade__play::after{content:"";position:absolute;left:52%;top:50%;transform:translate(-50%,-50%);border-style:solid;border-width:.8rem 0 .8rem 1.35rem;border-color:transparent transparent transparent #fff}' +
     '.jl-wistia-facade:hover .jl-wistia-facade__play{transform:scale(1.08);background:rgba(0,0,0,.8)}' +
@@ -76,6 +76,7 @@
     button.type = 'button';
     button.className = 'jl-wistia-facade';
     button.setAttribute('data-ascii-images', 'off');
+    button.setAttribute('cd-lightbox-exclude', ''); // keep the site's image lightbox off the thumbnail
     button.setAttribute('aria-label', (english ? 'Play video: ' : 'Lire la vidéo : ') + title);
     var src = thumb(info.image, 960);
     if (src) {

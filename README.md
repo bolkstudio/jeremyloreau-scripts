@@ -13,7 +13,7 @@ Custom scripts for [jeremyloreau.com](https://www.jeremyloreau.com/) (Webflow), 
 jsDelivr serves any file of this repo, and minifies it on the fly when you request `.min.js`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/bolkstudio/jeremyloreau-scripts@v1.1.0/wistia-facade.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/bolkstudio/jeremyloreau-scripts@v1.1.1/wistia-facade.min.js"></script>
 ```
 
 Rules:
@@ -32,4 +32,5 @@ Rules:
 
 | Tag | Date | Notes |
 |---|---|---|
+| v1.1.1 | 2026-11-25 | Clicking the thumbnail opened the site's image lightbox instead of the video: thumbnail excluded from the lightbox (`cd-lightbox-exclude`, `pointer-events: none` on the image). |
 | v1.1.0 | 2026-11-25 | wistia-facade, first public version (CSS injected by the script, observer stops at DOMContentLoaded). |
