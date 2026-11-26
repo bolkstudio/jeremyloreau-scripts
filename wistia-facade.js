@@ -1,15 +1,17 @@
 /*!
- * wistia-facade v1.2.0
+ * wistia-facade v1.3.0
  * Bolk Studio, for jeremyloreau.com
  *
- * Wistia, YouTube and Vimeo videos embedded through Webflow (Embedly iframes in Rich Text
- * and in native Video elements, `.w-video`) are replaced by a thumbnail + play button while
- * the page loads. The real player is only loaded on click, then autoplays. Cuts the player
- * JS and video buffering that otherwise run on every page load (Core Web Vitals).
+ * Wistia, YouTube, Vimeo and Loom videos embedded through Webflow (Embedly iframes in Rich
+ * Text and in native Video elements, `.w-video`) only load when they come near the screen.
+ * Until then an empty `srcdoc` keeps each iframe from loading its `src`. Cuts the player JS
+ * and video buffering of off-screen videos (Core Web Vitals).
  *
- * - Rich Text videos: the iframe is removed and a new player iframe is created on click.
- * - Video elements outside Rich Text: the iframe stays in place (other site scripts read it),
- *   but an empty `srcdoc` keeps it from loading its `src` until the click.
+ * Two modes, per video:
+ * - "lazy" (default): the original iframe and player are kept untouched, so the rendering is
+ *   exactly the site's (Wistia autoplay loops, animated video thumbnails, controls).
+ * - "click": thumbnail + play button, the player loads on click only (heavier savings, but a
+ *   static thumbnail). Opt-in with data-jl-wistia-facade="click" on any ancestor.
  *
  * Install: classic synchronous <script> at the very top of the <head>
  * (no async, no defer, no type="module"), so it runs before the iframes are parsed.
@@ -23,6 +25,26 @@
   var ALLOW = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
   // Containers managed by other site scripts (popups, exercise previews already built by the site)
   var SKIP = '[data-jl-wistia-facade="off"],[cd-popup-wrap],[cd-popup-root],[data-jl-video-preview],[data-media-stage]';
+  // Lazy mode: start loading a video when it is within 1.5 screen heights of the viewport
+  var MARGIN = '150% 0px';
+  var lazyObserver = null;
+
+  function lazyLoad(frame) {
+    if (!('IntersectionObserver' in window)) return;
+    frame.setAttribute('srcdoc', ''); // srcdoc wins over src: nothing is loaded, src stays readable and editable
+    frame.setAttribute('data-jl-wistia-lazy', '');
+    if (!lazyObserver) {
+      lazyObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          lazyObserver.unobserve(entry.target);
+          entry.target.removeAttribute('srcdoc'); // the iframe now loads its current src
+          entry.target.removeAttribute('data-jl-wistia-lazy');
+        });
+      }, { rootMargin: MARGIN });
+    }
+    lazyObserver.observe(frame);
+  }
 
   var CSS =
     '.jl-wistia-facade{position:absolute;inset:0;z-index:1;width:100%;height:100%;padding:0;margin:0;border:0;background:#000;cursor:pointer;overflow:hidden;display:block}' +
@@ -64,6 +86,9 @@
         q.set('autoplay', '1'); q.set('playsinline', '1');
         return { kind: 'youtube', id: id, image: image || 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg', player: 'https://www.youtube-nocookie.com/embed/' + id + '?' + q };
       }
+      if (/(^|\.)loom\.com$/.test(host) && /^\/embed\//.test(u.pathname)) {
+        return { kind: 'loom', id: u.pathname.split('/')[2], image: image, player: u.href };
+      }
       if (/(^|\.)vimeo\.com$/.test(host)) {
         m = u.pathname.match(/^\/(?:video\/)?(\d+)(?:\/([a-zA-Z0-9]+))?\/?$/);
         if (!m) return null;
@@ -104,6 +129,11 @@
     var info = resolve(frame.getAttribute('src') || '');
     if (!info) return;
     frame.__jlFacade = true;
+
+    if (!frame.closest('[data-jl-wistia-facade="click"]') || (info.kind === 'loom' && !info.image)) {
+      lazyLoad(frame);
+      return;
+    }
     injectStyle();
 
     var english = (doc.documentElement.lang || '').indexOf('en') === 0;
