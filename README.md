@@ -7,6 +7,9 @@ Custom scripts for [jeremyloreau.com](https://www.jeremyloreau.com/) (Webflow), 
 | Script | What it does | Where to load it |
 |---|---|---|
 | [`wistia-facade.js`](wistia-facade.js) | Wistia, YouTube, Vimeo and Loom videos (Rich Text and Webflow Video elements) only load when they come near the screen, with the site's original player and rendering. Optional click-to-play thumbnail mode (Core Web Vitals). | Site settings > Custom code > **Head code, very top** |
+| [`jl-global.js`](jl-global.js) | Jérémy's global scripts (cookie labels, media focus, nav timing, deferred sliders, `JLDirectVideo`, Wistia native frames), moved out of the first `global-styles` embed unchanged. | Same place, sync: first embed of the `global-styles` component |
+| [`jl-ascii.js`](jl-ascii.js) | Jérémy's ASCII system (image previews, media feedback, fade, click text, page loader, silhouette, progressive reveal), moved out of the three ASCII embeds unchanged. Needs `jl-content-boot-v2` (inline, Head). | Same place, sync: first ASCII embed of `global-styles` |
+| [`jl-pages.js`](jl-pages.js) | Scripts that wait for DOMContentLoaded (programmes, Hyvor, tables, account form, library focus, summaries, scroll lock, card helpers). Page-specific ones only run where their target exists. | Footer code, `defer` |
 
 ## Usage with jsDelivr
 
@@ -32,10 +35,18 @@ Rules:
 - Opt-out on a page or section: `data-jl-wistia-facade="off"` on any ancestor.
 - Works alongside the site's `jl-wistia-native-frames` script (same player URL shape, no reload).
 
+### jl-global.js, jl-ascii.js, jl-pages.js
+
+- Generated from the published inline code (26 November 2026), not edited: each original script is wrapped in its own `try/catch` so one error does not stop the others, as with separate inline scripts.
+- Why: inline code is downloaded again with every page; external files are cached after the first page (HTML -67 KB gzip per page, main-thread blocking -0.5 to -0.7 s from the second page in lab tests).
+- `jl-global.js` and `jl-ascii.js` must stay synchronous and at the same position (other inline code reads `JLDirectVideo`, `__jlSliders` and the ASCII engine during parsing). Preload both from the Head.
+- Kept inline on purpose: `jl-content-boot-v2`, `jl-image-dimensions-v1`, `jl-alternative-sort`, the lightbox scripts (must run before first paint or before page code), the Relkit counters (must run before BolkLab).
+
 ## Versions
 
 | Tag | Date | Notes |
 |---|---|---|
+| (commit `dbad517`) | 2026-11-26 | `jl-global.js`, `jl-ascii.js`, `jl-pages.js` v1.0.0 added. |
 | v1.3.0 | 2026-11-26 | Default mode is now "lazy": videos load near the viewport with the original player, no visual change (keeps Wistia autoplay and animated thumbnails). The click-to-play thumbnail becomes opt-in (`data-jl-wistia-facade="click"`). Loom embeds covered. |
 | v1.2.0 | 2026-11-25 | Also covers Webflow Video elements outside Rich Text (method, testimonials, exercises) and YouTube / Vimeo embeds. Video element iframes are neutralised with `srcdoc` instead of being removed. |
 | v1.1.1 | 2026-11-25 | Clicking the thumbnail opened the site's image lightbox instead of the video: thumbnail excluded from the lightbox (`cd-lightbox-exclude`, `pointer-events: none` on the image). |
