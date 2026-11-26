@@ -43,6 +43,10 @@ Rules:
 - `jl-global.js` and `jl-ascii.js` must stay synchronous and at the same position (other inline code reads `JLDirectVideo`, `__jlSliders` and the ASCII engine during parsing). Preload both from the Head.
 - Kept inline on purpose: `jl-content-boot-v2`, `jl-image-dimensions-v1`, `jl-alternative-sort`, the lightbox scripts (must run before first paint or before page code), the Relkit counters (must run before BolkLab).
 
+## Slater files (`slater/`)
+
+[`slater/jl-global.js`](slater/jl-global.js) and [`slater/jl-pages.js`](slater/jl-pages.js) are pasted into Slater (project Jeremy Loreau), which runs them as ES modules after DOMContentLoaded. They hold the scripts that can run that late without any visible change; the rest stays in Webflow (see the procedure in Bolk's notes). Each original script runs in its own `try/catch`. Two adaptations: the footer year runs immediately, and the Hyvor script also checks once at start. Do not wrap them in a DOMContentLoaded listener.
+
 ## Versions
 
 | Tag | Date | Notes |
