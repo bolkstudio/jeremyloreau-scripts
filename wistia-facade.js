@@ -1,5 +1,5 @@
 /*!
- * wistia-facade v1.3.0
+ * wistia-facade v1.5.0
  * Bolk Studio, for jeremyloreau.com
  *
  * Wistia, YouTube, Vimeo and Loom videos embedded through Webflow (Embedly iframes in Rich
@@ -8,10 +8,14 @@
  * and video buffering of off-screen videos (Core Web Vitals).
  *
  * Two modes, per video:
- * - "lazy" (default): the original iframe and player are kept untouched, so the rendering is
- *   exactly the site's (Wistia autoplay loops, animated video thumbnails, controls).
- * - "click": thumbnail + play button, the player loads on click only (heavier savings, but a
- *   static thumbnail). Opt-in with data-jl-wistia-facade="click" on any ancestor.
+ * - "lazy" (default for Wistia, Vimeo, Loom): the original iframe and player are kept untouched,
+ *   so the final rendering is exactly the site's (Wistia autoplay loops, animated video
+ *   thumbnails, controls). No player starts before the page has loaded: until then, videos on
+ *   screen show their still thumbnail, then the player takes over (v1.5).
+ * - "click" (default for YouTube, whose embed is a thumbnail + play button anyway): thumbnail +
+ *   play button, the player loads on click only. Opt-in for any video with
+ *   data-jl-wistia-facade="click" on an ancestor; data-jl-wistia-facade="lazy" keeps a
+ *   YouTube video in lazy mode.
  *
  * Install: classic synchronous <script> at the very top of the <head>
  * (no async, no defer, no type="module"), so it runs before the iframes are parsed.
@@ -27,24 +31,70 @@
   var SKIP = '[data-jl-wistia-facade="off"],[cd-popup-wrap],[cd-popup-root],[data-jl-video-preview],[data-media-stage]';
   // Lazy mode: start loading a video when it is within 1.5 screen heights of the viewport
   var MARGIN = '150% 0px';
-  var lazyObserver = null;
+  // No player before the page has loaded (window load + idle time), at most this long after start
+  var START_CAP = 8000;
+  var lazyObserver = null, posterObserver = null, started = false, waiting = [];
 
-  function lazyLoad(frame) {
-    if (!('IntersectionObserver' in window)) return;
-    frame.setAttribute('srcdoc', ''); // srcdoc wins over src: nothing is loaded, src stays readable and editable
-    frame.setAttribute('data-jl-wistia-lazy', '');
+  // Before the page has loaded, a video on screen shows its still thumbnail inside the empty iframe
+  function posterDoc(url) {
+    return '<!doctype html><style>html,body{margin:0;height:100%;background:#000 url(' + JSON.stringify(url) +
+      ') center/cover no-repeat}</style>';
+  }
+
+  function release(frame) {
+    frame.removeAttribute('srcdoc'); // the iframe now loads its current src
+    frame.removeAttribute('data-jl-wistia-lazy');
+  }
+
+  function observeLazy(frame) {
     if (!lazyObserver) {
       lazyObserver = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
           if (!entry.isIntersecting) return;
           lazyObserver.unobserve(entry.target);
-          entry.target.removeAttribute('srcdoc'); // the iframe now loads its current src
-          entry.target.removeAttribute('data-jl-wistia-lazy');
+          release(entry.target);
         });
       }, { rootMargin: MARGIN });
     }
     lazyObserver.observe(frame);
   }
+
+  function start() {
+    if (started) return;
+    started = true;
+    if (posterObserver) posterObserver.disconnect();
+    waiting.forEach(observeLazy);
+    waiting = null;
+  }
+
+  function lazyLoad(frame, info) {
+    if (!('IntersectionObserver' in window)) return;
+    frame.setAttribute('srcdoc', ''); // srcdoc wins over src: nothing is loaded, src stays readable and editable
+    frame.setAttribute('data-jl-wistia-lazy', '');
+    if (started) return observeLazy(frame);
+    waiting.push(frame);
+    var poster = posterUrl(info);
+    if (!poster) return;
+    if (!posterObserver) {
+      posterObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          posterObserver.unobserve(entry.target);
+          if (!started && entry.target.getAttribute('srcdoc') === '') entry.target.setAttribute('srcdoc', posterDoc(entry.target.__jlPoster));
+        });
+      });
+    }
+    frame.__jlPoster = poster;
+    posterObserver.observe(frame);
+  }
+
+  function whenLoaded() {
+    var idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 200); };
+    idle(start, { timeout: 1500 });
+  }
+  if (doc.readyState === 'complete') whenLoaded();
+  else window.addEventListener('load', whenLoaded, { once: true });
+  setTimeout(start, START_CAP);
 
   var CSS =
     '.jl-wistia-facade{position:absolute;inset:0;z-index:1;width:100%;height:100%;padding:0;margin:0;border:0;background:#000;cursor:pointer;overflow:hidden;display:block}' +
@@ -101,6 +151,13 @@
     return null;
   }
 
+  // Single still thumbnail URL for the pre-load poster
+  function posterUrl(info) {
+    var wistia = info.kind === 'wistia' && info.image && info.image.match(/^https:\/\/embed-ssl\.wistia\.com\/deliveries\/([a-f0-9]+)/);
+    if (wistia) return 'https://embed-ssl.wistia.com/deliveries/' + wistia[1] + '.webp?image_resize=960';
+    return info.image && /^https:/.test(info.image) ? info.image : null;
+  }
+
   // Thumbnail <img>: Wistia in WebP at several widths, other providers as given by Embedly
   function thumbnail(info) {
     var wistia = info.kind === 'wistia' && info.image && info.image.match(/^https:\/\/embed-ssl\.wistia\.com\/deliveries\/([a-f0-9]+)/);
@@ -130,8 +187,9 @@
     if (!info) return;
     frame.__jlFacade = true;
 
-    if (!frame.closest('[data-jl-wistia-facade="click"]') || (info.kind === 'loom' && !info.image)) {
-      lazyLoad(frame);
+    var click = info.kind === 'youtube' ? !frame.closest('[data-jl-wistia-facade="lazy"]') : !!frame.closest('[data-jl-wistia-facade="click"]');
+    if (!click || (info.kind === 'loom' && !info.image)) {
+      lazyLoad(frame, info);
       return;
     }
     injectStyle();
