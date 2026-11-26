@@ -10,6 +10,7 @@ Custom scripts for [jeremyloreau.com](https://www.jeremyloreau.com/) (Webflow), 
 | [`jl-global.js`](jl-global.js) | Jérémy's global scripts (cookie labels, media focus, nav timing, deferred sliders, `JLDirectVideo`, Wistia native frames), moved out of the first `global-styles` embed unchanged. | Same place, sync: first embed of the `global-styles` component |
 | [`jl-ascii.js`](jl-ascii.js) | Jérémy's ASCII system (image previews, media feedback, fade, click text, page loader, silhouette, progressive reveal), moved out of the three ASCII embeds unchanged. Needs `jl-content-boot-v2` (inline, Head). | Same place, sync: first ASCII embed of `global-styles` |
 | [`jl-pages.js`](jl-pages.js) | Scripts that wait for DOMContentLoaded (programmes, Hyvor, tables, account form, library focus, summaries, scroll lock, card helpers). Page-specific ones only run where their target exists. | Footer code, `defer` |
+| [`jl-footer.js`](jl-footer.js) | Only the Footer code scripts (programmes, cookie link EN, summaries, scroll lock, card helpers), for when the `global-styles` scripts stay inline. Do not load together with `jl-pages.js`. | Footer code, `defer` |
 
 ## Usage with jsDelivr
 
