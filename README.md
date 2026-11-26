@@ -17,7 +17,7 @@ Custom scripts for [jeremyloreau.com](https://www.jeremyloreau.com/) (Webflow), 
 jsDelivr serves any file of this repo, and minifies it on the fly when you request `.min.js`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/bolkstudio/jeremyloreau-scripts@v1.3.0/wistia-facade.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/bolkstudio/jeremyloreau-scripts@v1.5.0/wistia-facade.min.js"></script>
 ```
 
 Rules:
@@ -29,8 +29,8 @@ Rules:
 
 - Load it as a classic script: no `async`, no `defer`, no `type="module"`. It must run before the Rich Text iframes are parsed, otherwise the videos start loading before it can stop them.
 - Targets Embedly, Wistia, YouTube, Vimeo and Loom iframes in `figure.w-richtext-figure-type-video` (Rich Text) and in Webflow Video elements (`.w-video`, e.g. `video_bg_video`, `vimeo_iframe`).
-- Default "lazy" mode: the iframe stays in the DOM with an empty `srcdoc` (other site scripts can still read and rewrite its `src`), and `srcdoc` is removed when the video is within 1.5 screen heights of the viewport. The original player loads unchanged: Wistia autoplay loops, animated video thumbnails, controls. Videos in hidden containers (closed accordions) load when shown.
-- "click" mode, opt-in with `data-jl-wistia-facade="click"` on an ancestor: thumbnail + play button, the player loads on click only. Rich Text iframes are replaced by a new player iframe on click; Video element iframes keep their `srcdoc` until the click.
+- Default "lazy" mode (Wistia, Vimeo, Loom): the iframe stays in the DOM with an empty `srcdoc` (other site scripts can still read and rewrite its `src`), and `srcdoc` is removed when the video is within 1.5 screen heights of the viewport, but never before the page has loaded (window `load` + idle time, at most 8 s after the script starts). Until then, a video on screen shows its still thumbnail (Embedly `image`) inside the iframe. The original player loads unchanged: Wistia autoplay loops, animated video thumbnails, controls. Videos in hidden containers (closed accordions) load when shown.
+- "click" mode, default for YouTube (`data-jl-wistia-facade="lazy"` on an ancestor keeps a YouTube video lazy), opt-in for the others with `data-jl-wistia-facade="click"` on an ancestor: thumbnail + play button, the player loads on click only. Rich Text iframes are replaced by a new player iframe on click; Video element iframes keep their `srcdoc` until the click.
 - Skipped: popups (`[cd-popup-wrap]`, `[cd-popup-root]`, `[data-jl-video-preview]`) and stages built by the site (`[data-media-stage]`).
 - YouTube plays from `youtube-nocookie.com`.
 - Opt-out on a page or section: `data-jl-wistia-facade="off"` on any ancestor.
@@ -52,6 +52,7 @@ Rules:
 | Tag | Date | Notes |
 |---|---|---|
 | (commit `dbad517`) | 2026-11-26 | `jl-global.js`, `jl-ascii.js`, `jl-pages.js` v1.0.0 added. |
+| v1.5.0 | 2026-11-26 | wistia-facade v1.5.0: no lazy player starts before the page has loaded (window `load` + idle time, at most 8 s); until then, videos on screen show their still thumbnail inside the empty iframe. YouTube embeds are click-to-play by default (`data-jl-wistia-facade="lazy"` to keep one lazy). |
 | v1.3.0 | 2026-11-26 | Default mode is now "lazy": videos load near the viewport with the original player, no visual change (keeps Wistia autoplay and animated thumbnails). The click-to-play thumbnail becomes opt-in (`data-jl-wistia-facade="click"`). Loom embeds covered. |
 | v1.2.0 | 2026-11-25 | Also covers Webflow Video elements outside Rich Text (method, testimonials, exercises) and YouTube / Vimeo embeds. Video element iframes are neutralised with `srcdoc` instead of being removed. |
 | v1.1.1 | 2026-11-25 | Clicking the thumbnail opened the site's image lightbox instead of the video: thumbnail excluded from the lightbox (`cd-lightbox-exclude`, `pointer-events: none` on the image). |
