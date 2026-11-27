@@ -47,6 +47,8 @@ Rules:
 
 [`slater/jl-global.js`](slater/jl-global.js) and [`slater/jl-pages.js`](slater/jl-pages.js) are pasted into Slater (project Jeremy Loreau), which runs them as ES modules after DOMContentLoaded. They hold the scripts that can run that late without any visible change; the rest stays in Webflow (see the procedure in Bolk's notes). Each original script runs in its own `try/catch`. Two adaptations: the footer year runs immediately, and the Hyvor script also checks once at start. Do not wrap them in a DOMContentLoaded listener.
 
+[`slater/zoom-images.js`](slater/zoom-images.js) is the Slater file `0.ZoomImages.js` (zoom and pan in image popups). Since v2.1, GSAP Draggable and InertiaPlugin are loaded once the page is idle after `load`, or as soon as an image popup opens, instead of on every page load.
+
 ## Versions
 
 | Tag | Date | Notes |
